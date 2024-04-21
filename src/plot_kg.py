@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 def get_plot(triplets):
-    triplets = [triplet.split('interacts with') for triplet in triplets]
+    triplets = [triplet.split(' | interacts with | ') for triplet in triplets]
 
     head = [triplet[0].strip() for triplet in triplets]
     relation = ['interacts with' for triplet in triplets]
@@ -30,7 +30,9 @@ def get_plot(triplets):
             y=[y0, y1, None],
             mode='lines',
             line=dict(width=0.5, color='gray'),
-            hoverinfo='none'
+            hoverinfo='none',
+            showlegend=False,
+            legendgroup='Edges',
          )
         edge_traces.append(edge_trace)
 
@@ -38,41 +40,34 @@ def get_plot(triplets):
     node_trace = go.Scatter(
         x=[pos[node][0] for node in G.nodes()],
         y=[pos[node][1] for node in G.nodes()],
-        mode='markers+text',
+        mode='markers',
         marker=dict(size=10, color='lightblue'),
-        text=[node.split('(')[0] for node in G.nodes()],
-        textposition='top center',
         hoverinfo='text',
-        textfont=dict(size=12)
+        text=[node.split('(')[0] for node in G.nodes()],
+        textposition='middle center',
+        textfont=dict(size=7),
+        showlegend=True,
+        visible=True,
+        name='Nodes',
     )
 
-    # node_labels_traces = go.Scatter(
-    #     x=[pos[node][0] for node in G.nodes()],
-    #     y=[pos[node][1] for node in G.nodes()],
-    #     mode='text',
-    #     text=[node.split('(')[0] for node in G.nodes()],
-    #     textposition='middle center',
-    #     hoverinfo='none',
-    #     textfont=dict(size=7)
-    # )
-
-    # Create edge label trace
-    # edge_label_trace = go.Scatter(
-    #     x=[(pos[edge[0]][0] + pos[edge[1]][0]) / 2 for edge in G.edges()],
-    #     y=[(pos[edge[0]][1] + pos[edge[1]][1]) / 2 for edge in G.edges()],
-    #     mode='text',
-    #     text=[G[edge[0]][edge[1]]['label'] for edge in G.edges()],
-    #     textposition='middle center',
-    #     hoverinfo='none',
-    #     textfont=dict(size=7)
-    # )
+    node_labels_traces = go.Scatter(
+        x=[pos[node][0] for node in G.nodes()],
+        y=[pos[node][1] for node in G.nodes()],
+        mode='text',
+        text=[node.split('(')[0] for node in G.nodes()],
+        textposition='top center',
+        hoverinfo='none',
+        textfont=dict(size=10),
+        name='Node Labels',
+    )
 
     # Create layout
     layout = go.Layout(
         title='Knowledge Graph',
         titlefont_size=16,
         title_x=0.5,
-        showlegend=False,
+        showlegend=True,
         hovermode='closest',
         xaxis_visible=False,
         yaxis_visible=False,
@@ -80,9 +75,7 @@ def get_plot(triplets):
     )
 
     # make traces off by default
-    fig = go.Figure(data=edge_traces + [node_trace], layout=layout)
-    fig.update_traces(visible='legendonly')
-
+    fig = go.Figure(data=edge_traces + [node_trace] + [node_labels_traces], layout=layout)
 
     return fig
 

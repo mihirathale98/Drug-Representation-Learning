@@ -4,8 +4,6 @@ import os
 import requests
 import sseclient
 
-
-
 KEY = open('together_key.txt', 'r').read().strip()
 
 def get_llm_response(input_prompt):

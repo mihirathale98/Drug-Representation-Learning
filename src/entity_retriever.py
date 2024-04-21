@@ -188,8 +188,16 @@ if __name__ == '__main__':
             similar_genes, similar_drugs, similar_diseases = get_similar_entities(entity_embedding, k=50,
                                                                                   model='custom')
 
+            sorted_custom = sorted(list(similar_genes.items()), key=lambda x: x[1], reverse=True)
+            sorted_custom.extend(sorted(list(similar_drugs.items()), key=lambda x: x[1], reverse=True))
+            sorted_custom.extend(sorted(list(similar_diseases.items()), key=lambda x: x[1], reverse=True))
+
+            sorted_custom = sorted(sorted_custom, key=lambda x: x[1], reverse=True)[:5]
+
             entities = list(similar_genes.keys()) + list(similar_drugs.keys()) + list(similar_diseases.keys())
             types = ['gene'] * len(similar_genes) + ['drug'] * len(similar_drugs) + ['disease'] * len(similar_diseases)
+
+
             custom_fig = plot_embeddings(entity, entities, types, model='custom')
             base_fig = plot_embeddings(entity, entities, types, model='base')
 
@@ -199,37 +207,56 @@ if __name__ == '__main__':
             cols[1].subheader('Base Model')
             cols[1].plotly_chart(base_fig)
 
+            entity_embedding = fetch_embeddings(entity, entity_type, model='base')
+            similar_genes, similar_drugs, similar_diseases = get_similar_entities(entity_embedding, k=50,
+                                                                                  model='base')
+            sorted_base = sorted(list(similar_genes.items()), key=lambda x: x[1], reverse=True)
+            sorted_base.extend(sorted(list(similar_drugs.items()), key=lambda x: x[1], reverse=True))
+            sorted_base.extend(sorted(list(similar_diseases.items()), key=lambda x: x[1], reverse=True))
+
+            sorted_base = sorted(sorted_base, key=lambda x: x[1], reverse=True)[:5]
+            cols = st.columns(2, gap="small")
+
+            with cols[0]:
+                with st.expander('Custom Model'):
+                    for ent, score in sorted_custom:
+                        st.markdown(f"{ent} (score: {score})")
+            with cols[1]:
+                with st.expander('Base Model'):
+                    for ent, score in sorted_base:
+                        st.markdown(f"{ent} (score: {score})")
+
+
     with tabs[1]:
         st.title('Masked Token Prediction')
         select_chain = st.selectbox('Chain', list(sample_data))
 
+        ents = [ent for ent in select_chain if ent != 'interacts_with']
+        masked_ent = ents[np.random.randint(0, len(ents))]
         if st.button("Predict"):
 
             response_custom = requests.post(
                 'http://127.0.0.1:8000/predict',
-                json={'text': json.dumps(select_chain), 'model': 'custom'}
+                json={'text': json.dumps(select_chain), 'model': 'custom', 'masked_ent': masked_ent}
             ).json()
 
             response_base = requests.post(
                 'http://127.0.0.1:8000/predict',
-                json={'text': json.dumps(select_chain), 'model': 'base'}
+                json={'text': json.dumps(select_chain), 'model': 'base', 'masked_ent': masked_ent}
             ).json()
 
             for response, model_name in [(response_custom, 'Custom Model'), (response_base, 'Base Model')]:
                 with st.expander(f"{model_name}"):
                     completed_text = response['text']
                     masked_ent = response['masked_ent']
-                    predicted_ents = response['preds']
+                    predicted = response['best_token']
 
                     st.markdown("**Original Text**")
                     st.markdown(' <sep> '.join(list(select_chain)).replace(masked_ent, f':red[**{masked_ent}**]'))
                     st.write("**Completed Text(best prediction)**")
                     st.write(
-                        ' <sep> '.join(tuple(completed_text.split('[SEP]'))).replace(list(predicted_ents.keys())[0],
-                                                                                     f':red[**{list(predicted_ents.keys())[0]}**]'))
-                    st.write('**Top-5 Predictions**')
-                    for ent, score in predicted_ents.items():
-                        st.write(f"{ent}: {score}")
+                        ' <sep> '.join(tuple(completed_text.split('[SEP]'))).replace(predicted,
+                                                                                     f':red[**{predicted}**]'))
 
     with tabs[2]:
         st.title('Question Answering')
