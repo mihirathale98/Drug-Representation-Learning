@@ -4,51 +4,42 @@ from fastapi import FastAPI
 import numpy as np
 import json
 app = FastAPI()
+from transformers import pipeline
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+model = BertForMaskedLM.from_pretrained('bert-base-uncased').eval()
 
-custom_model = BertForMaskedLM.from_pretrained('../checkpoint-44000')
-model.eval()
-
+custom_model = BertForMaskedLM.from_pretrained('../checkpoint-44000').eval()
 
 @app.post("/predict")
 def predict_mask(request: dict):
     text = json.loads(request['text'])
     model_name = request['model']
-    ents = [ent for ent in text if ent != 'interacts_with']
+    masked_ent = request['masked_ent']
     text = tokenizer.sep_token.join(text)
-    masked_ent = ents[np.random.randint(0, len(ents))]
-    text = text.replace(masked_ent, '[MASK]')
+    original_text = text
+    text = text.replace(masked_ent, ''.join(['[MASK]'] * len(tokenizer.tokenize(masked_ent))))
+    token_ids = tokenizer.encode(text, return_tensors='pt')
 
-    tokenized_text = tokenizer.encode_plus(text, return_tensors="pt")
+    masked_position = (token_ids.squeeze() == tokenizer.mask_token_id).nonzero()
 
-    masked_index = tokenized_text.input_ids[0].tolist().index(tokenizer.mask_token_id)
+    masked_pos = [mask.item() for mask in masked_position]
 
     with torch.no_grad():
-        if model_name == 'custom':
-            outputs = custom_model(**tokenized_text)
+        if model_name == 'base':
+            output = model(token_ids)[0].squeeze()
         else:
-            outputs = model(**tokenized_text)
+            output = custom_model(token_ids)[0].squeeze()
 
+    masked_token_logits = output[masked_pos]
 
+    top_1 = torch.topk(masked_token_logits, 1, dim=-1).indices.tolist()
+    top_1 = [tokenizer.decode(tok, skip_special_tokens=True, clean_up_tokenization_spaces=True) for tok in top_1]
 
-    masked_token_logits = outputs.logits[0, masked_index]
+    best_token = tokenizer.convert_tokens_to_string(top_1)
+    completed_text = original_text.replace(masked_ent, best_token)
+    response = {"text": completed_text, 'masked_ent': masked_ent, 'best_token': best_token}
 
-    top_k = 5
-    probs, predicted_indices = torch.topk(torch.softmax(masked_token_logits, dim=0), top_k)
-    probs = probs.tolist()
-    predicted_tokens = tokenizer.convert_ids_to_tokens(predicted_indices.tolist())
-    preds = {}
-    for token, prob in zip(predicted_tokens, probs):
-        preds[token] = prob
-
-    preds = dict(sorted(preds.items(), key=lambda item: item[1], reverse=True))
-
-    predicted_token = predicted_tokens[0].lstrip('##')
-    completed_text = text.replace('[MASK]', predicted_token)
-
-    response = {"text": completed_text, "preds": preds, 'masked_ent': masked_ent}
     return response
 
 
